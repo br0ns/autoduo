@@ -8,6 +8,7 @@ import re
 import json
 import functools
 import time
+import traceback
 
 p = argparse.ArgumentParser(
     description='Automatically equip streak freeze and enter wager in Duolingo'\
