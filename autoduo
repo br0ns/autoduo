@@ -1,0 +1,168 @@
+#!/usr/bin/env python2.7
+
+DUOLINGO = 'https://www.duolingo.com/'
+
+import argparse
+import requests
+import re
+import json
+import functools
+import time
+
+p = argparse.ArgumentParser(
+    description='Automatically equip streak freeze and enter wager in Duolingo'\
+    'when you forget.',
+)
+
+p.add_argument(
+    '--username', '-u',
+    metavar='<username>',
+    help='Account username',
+    required=True,
+)
+
+p.add_argument(
+    '--password', '-p',
+    metavar='<password>',
+    help='Account password',
+    required=True,
+)
+
+p.add_argument(
+    '--streak-freeze', '-f',
+    action='store_true',
+    help='Equip streak freeze',
+    default=True,
+)
+p.add_argument(
+    '--no-streak-freeze', '-F',
+    action='store_false',
+    dest='streak_freeze',
+    help='Do not equip streek freeze',
+)
+
+p.add_argument(
+    '--wager', '-w',
+    action='store_true',
+    help='Wager lingots',
+    default=True,
+)
+p.add_argument(
+    '--no-wager', '-W',
+    action='store_false',
+    dest='wager',
+    help='Do not wager lingots',
+)
+
+args = p.parse_args()
+
+def login():
+    global S
+    S = requests.Session()
+    r = S.post(DUOLINGO + 'login',
+               {'login'    : args.username,
+                'password' : args.password,
+               },
+              )
+    assert r.ok
+    try:
+        resp = json.loads(r.text)
+    except:
+        raise ValueError('Server returned invalid JSON: %r' % r.text)
+    if 'response' not in resp or resp['response'].lower() != 'ok':
+        raise RuntimeError('Could not log in: %r' % resp)
+
+    S.loggedin = True
+    S.username = resp.get('username', args.username)
+    S.user_id  = int(resp.get('user_id'))
+    print 'Logged in as %s (UID: %d)' % (S.username, S.user_id)
+
+def pp(data):
+    print json.dumps(data, sort_keys=True,indent=4, separators=(',', ': '))
+
+def get_user_data():
+    r = S.get(DUOLINGO + 'users/%s' % S.username)
+    data = json.loads(r.text)
+    S.user_data = data
+
+    # # Select fields
+    S.lingots = int(data['rupees'])
+    S.streak  = int(data['site_streak'])
+    S.streak_extended = 'true' == data['streak_extended_today']
+    S.language = data['learning_language']
+    S.inventory = data['inventory']
+    S.streak_freeze = 'streak_freeze' in S.inventory
+    S.wager = 'rupee_wager' in S.inventory
+
+    # pp(data)
+
+def get_items():
+    r = S.get(DUOLINGO + 'api/1/store/get_items')
+    data = json.loads(r.text)
+    S.items = {}
+    for items in data.values():
+        S.items.update({i['name']: i for i in items})
+
+    # pp(S.items)
+
+def buy_item(item):
+    if item not in S.items:
+        raise ValueError('No such item for sale: %s' % item)
+    item = S.items[item]
+    if S.lingots < item['price']:
+        raise RuntimeError('Not enough lingots')
+
+    r = S.post(DUOLINGO + 'store/purchase_item',
+               {'item_name': item['name'],
+                'learning_language': S.language,
+               })
+
+    if not r.ok:
+        raise RuntimeError('Could not buy item: %s' % item['title'])
+
+def streak_freeze():
+    if S.streak_freeze:
+        return
+    buy_item('streak_freeze')
+
+def wager():
+    if S.wager:
+        return
+    buy_item('wager')
+
+def doit():
+        login()
+        get_user_data()
+        get_items()
+
+        print 'Goal reached today: %s' % ('yes' if S.streak_extended else 'no')
+        print 'Lingots           : %d' % S.lingots
+        print 'Streak            : %d days' % S.streak
+        print 'Streak freeze     : %sequipped' % \
+            ('not ' if not S.streak_freeze else '')
+        print 'Wager             : %sequipped' % ('not ' if not S.wager else '')
+
+        if args.streak_freeze:
+            try:
+                streak_freeze()
+            except Exception as e:
+                print e
+
+        if args.wager:
+            try:
+                wager()
+            except Exception as e:
+                print e
+
+while True:
+    while True:
+        try:
+            print ' AUTODUO [%s] ' % \
+                time.strftime('%F %T', time.localtime(time.time()))
+            doit()
+            break
+        except:
+            traceback.print_exc()
+            print 'An error occured.  Retrying in 10s.'
+            time.sleep(10)
+    time.sleep(60*60)
