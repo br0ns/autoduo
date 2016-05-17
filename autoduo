@@ -129,7 +129,7 @@ def streak_freeze():
 def wager():
     if S.wager:
         return
-    buy_item('wager')
+    buy_item('rupee_wager')
 
 def doit():
         login()
