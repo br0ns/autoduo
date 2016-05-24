@@ -166,4 +166,4 @@ while True:
             traceback.print_exc()
             print 'An error occured.  Retrying in 10s.'
             time.sleep(10)
-    time.sleep(60*60)
+    time.sleep(10*60)
