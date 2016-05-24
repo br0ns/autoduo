@@ -145,12 +145,14 @@ def doit():
 
         if args.streak_freeze:
             try:
+                print 'Buying streak freeze'
                 streak_freeze()
             except Exception as e:
                 print e
 
         if args.wager:
             try:
+                print 'Waging lingots'
                 wager()
             except Exception as e:
                 print e
