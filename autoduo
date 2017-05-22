@@ -3,10 +3,12 @@
 DUOLINGO = 'https://www.duolingo.com/'
 
 import argparse
-import requests
-import re
-import json
 import functools
+import json
+import re
+import requests
+import signal
+import sys
 import time
 import traceback
 
@@ -64,7 +66,8 @@ def login():
                {'login'    : args.username,
                 'password' : args.password,
                },
-              )
+               timeout=30,
+    )
     assert r.ok
     try:
         resp = json.loads(r.text)
@@ -82,7 +85,9 @@ def pp(data):
     print json.dumps(data, sort_keys=True,indent=4, separators=(',', ': '))
 
 def get_user_data():
-    r = S.get(DUOLINGO + 'users/%s' % S.username)
+    r = S.get(DUOLINGO + 'users/%s' % S.username,
+              timeout=30,
+    )
     data = json.loads(r.text)
     S.user_data = data
 
@@ -98,7 +103,9 @@ def get_user_data():
     # pp(data)
 
 def get_items():
-    r = S.get(DUOLINGO + 'api/1/store/get_items')
+    r = S.get(DUOLINGO + 'api/1/store/get_items',
+              timeout=30,
+    )
     data = json.loads(r.text)
     S.items = {}
     for items in data.values():
@@ -116,7 +123,9 @@ def buy_item(item):
     r = S.post(DUOLINGO + 'store/purchase_item',
                {'item_name': item['name'],
                 'learning_language': S.language,
-               })
+               },
+               timeout=30,
+    )
 
     if not r.ok:
         raise RuntimeError('Could not buy item: %s' % item['title'])
@@ -143,14 +152,14 @@ def doit():
             ('not ' if not S.streak_freeze else '')
         print 'Wager             : %sequipped' % ('not ' if not S.wager else '')
 
-        if args.streak_freeze:
+        if args.streak_freeze and not S.streak_freeze:
             try:
                 print 'Buying streak freeze'
                 streak_freeze()
             except Exception as e:
                 print e
 
-        if args.wager:
+        if args.wager and not S.wager:
             try:
                 print 'Waging lingots'
                 wager()
@@ -162,8 +171,18 @@ while True:
         try:
             print ' AUTODUO [%s] ' % \
                 time.strftime('%F %T', time.localtime(time.time()))
+
+            # Better safe than sorry; we send SIGALRM after one minute to
+            # prevent any hangs
+            def handler(*_):
+                raise Exception('Alarm clock')
+            signal.signal(signal.SIGALRM, handler)
+            signal.alarm(60)
+
             doit()
             break
+        except KeyboardInterrupt:
+            sys.exit(1)
         except:
             traceback.print_exc()
             print 'An error occured.  Retrying in 10s.'
