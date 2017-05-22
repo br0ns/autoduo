@@ -180,6 +180,10 @@ while True:
             signal.alarm(60)
 
             doit()
+
+            # Disable alarm
+            signal.alarm(0)
+
             break
         except KeyboardInterrupt:
             sys.exit(1)
